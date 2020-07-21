@@ -23,12 +23,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.ServiceLoader;
-import java.util.stream.Stream;
 
 import io.vertx.ext.web.handler.graphql.ApolloWSHandler;
 import io.vertx.ext.web.handler.graphql.GraphQLHandler;
@@ -39,7 +36,6 @@ import org.javatuples.Triplet;
 
 import static graphql.schema.idl.RuntimeWiring.newRuntimeWiring;
 import static java.util.stream.Collectors.toList;
-import static java.util.stream.Collectors.toMap;
 
 public class AdminServer extends AbstractVerticle {
     private static final Logger LOGGER = LogManager.getLogger(AdminServer.class);
@@ -53,9 +49,6 @@ public class AdminServer extends AbstractVerticle {
         new Book("Book 6","Michael Crichton", "123461"),
         new Book("Book 7","Michael Crichton", "123462")
         );
-//    Map<String, Book> books = initData();
-
-    Map<String, Book> bookList = new HashMap<>();
 
     @Override
     public void start(final Promise<Void> startServer) {
@@ -72,7 +65,6 @@ public class AdminServer extends AbstractVerticle {
                 router.mountSubRouter("/", routes);   // Mount the sub router containing the module routes
 
                 vertx.executeBlocking(promise -> {
-//                        String schema = "type Query{hello: String}";
                         final SchemaParser schemaParser = new SchemaParser();
                         final InputStreamReader userInputStream = new InputStreamReader(
                             Objects.requireNonNull(
@@ -120,13 +112,6 @@ public class AdminServer extends AbstractVerticle {
     }
 
     private GraphQL setupGraphQL(TypeDefinitionRegistry baseSchema) {
-//        VertxDataFetcher<List<Book>> booksDataFetcher = new VertxDataFetcher<>((environment, future) -> {
-//            retrieveBooks(environment, future);
-//        });
-//        VertxDataFetcher<Person> personDataFetcher = new VertxDataFetcher<>((environment, future) -> {
-//            retrievePerson(environment, future);
-//        });
-
         VertxDataFetcher<List<Book>> booksDataFetcher = new VertxDataFetcher<>((environment, future) -> {
             books(environment, future);
         });
@@ -135,30 +120,14 @@ public class AdminServer extends AbstractVerticle {
             addBook(environment, future);
         });
 
-        VertxDataFetcher<List<Book>> deleteBookDataFetcher = new VertxDataFetcher<>((environment, future) -> {
+        VertxDataFetcher<Book> deleteBookDataFetcher = new VertxDataFetcher<>((environment, future) -> {
             deleteBook(environment, future);
         });
 
-//        DataFetcher<Publisher<Book2>> publisherDataFetcher = new DataFetcher<Publisher<Book2>>() {
-//            @Override
-//            public Publisher<Book2> get(DataFetchingEnvironment env) {
-//                String title = env.getArgument("title");
-//                String author = env.getArgument("author");
-//                Book2 book2 = new Book2(title, author);
-//
-//            }
-//        };
-
         RuntimeWiring runtimeWiring = newRuntimeWiring()
-//            .type("Query", builder -> builder.dataFetcher("hello", new StaticDataFetcher("world")))
-//            .type("Query", builder -> builder.dataFetcher("allBooks", booksDataFetcher))
-//            .type("Book", builder -> builder.dataFetcher("author", personDataFetcher))
-            //            .type("Query", builder -> builder.dataFetcher("allBooks", this::allBooks))
-//            .type("Book", builder -> builder.dataFetcher("author", this::person))
             .type("Query", builder -> builder.dataFetcher("books", booksDataFetcher))
             .type("Mutation", builder -> builder.dataFetcher("addBook", addBookDataFetcher)
             .dataFetcher("deleteBook", deleteBookDataFetcher))
-//            .type("Subscription", builder -> builder.dataFetcher("bookAdded", publisherDataFetcher))
             .build();
 
         SchemaGenerator schemaGenerator = new SchemaGenerator();
@@ -170,40 +139,23 @@ public class AdminServer extends AbstractVerticle {
         return build;
     }
 
-//    private Map<String, Book> initData() {
-//        Stream<Book> stream = Stream.<Book>builder()
-//            .add(new Book("Book A", "A"))
-//            .add(new Book("Book B", "B"))
-//            .add(new Book("Book C", "C"))
-//            .build();
-//
-//        return stream.collect(toMap(book -> book.id, book -> book));
-//    }
-//
-//
-//    private Person person(DataFetchingEnvironment env) {
-//        Book book = env.getSource();
-//        Person person = book.author;
-//        if (book.author.name.equals("B")) {
-//            person = new Person("gavin");
-//        }
-//        return person;
-//    }
-
     private void addBook(DataFetchingEnvironment env, Handler<AsyncResult<Book>> completionHandler) {
         String title = env.getArgument("title");
         String author = env.getArgument("author");
-        Book book = new Book(title, author, "1234567");
-        books.add(book);
+        Book book = new Book(title, author, "467234");
+        List<Book> newList = new ArrayList<>(books);
+        newList.add(book);
+        books = newList;
 
         completionHandler.handle(Future.succeededFuture(book));
     }
 
-    private void deleteBook(DataFetchingEnvironment env, Handler<AsyncResult<List<Book>>> completionHandler) {
+    private void deleteBook(DataFetchingEnvironment env, Handler<AsyncResult<Book>> completionHandler) {
         String createdAt = env.getArgument("createdAt");
+        Book bookToDelete = books.stream().filter(book -> book.createdAt.equals(createdAt)).findFirst().get();
         books = books.stream().filter(book -> !book.createdAt.equals(createdAt)).collect(toList());
 
-         completionHandler.handle(Future.succeededFuture(books));
+         completionHandler.handle(Future.succeededFuture(bookToDelete));
     }
 
     private void books(DataFetchingEnvironment env, Handler<AsyncResult<List<Book>>> completionHandler) {
@@ -216,7 +168,7 @@ public class AdminServer extends AbstractVerticle {
         String limit = env.getArgument("limit");
         List<Book> books = new ArrayList<>();
         if (before != null && after != null) {
-            for (Book book : bookList.values()
+            for (Book book : books
             ) {
                 LocalDateTime date = LocalDateTime.parse(book.createdAt);
                 if (date.isBefore(before) && date.isAfter(after)) {
@@ -226,76 +178,7 @@ public class AdminServer extends AbstractVerticle {
             completionHandler.handle(Future.succeededFuture(books));
         }
         else {
-            completionHandler.handle(Future.succeededFuture(bookList.values().stream().collect(toList())));
+            completionHandler.handle(Future.succeededFuture(books));
         }
     }
-
-
-//    private List<Book> allBooks(DataFetchingEnvironment env) {
-//        String bookName = env.getArgument("name");ok> allBooks(DataFetchingEnvironment env) {
-////        String bookName = env.getArgument("name");
-////        if (bookName != null) {
-////            return books.values().stream()
-////                .filter(book -> book.name.equals(bookName))
-////                .collect(toList());
-////        }
-////        return books.values().stream()
-////            .collect(toList());
-////    }
-////
-////    private void retrievePerson(DataFetchingEnvironment env, Handler<AsyncResult<Person>> completionHandler) {
-////        Book book = env.getSource();
-////        Person person = book.author;
-////        if (book.author.name.equals("B")) {
-////            person = new Person("gavin");
-////        }
-////        completionHandler.handle(Future.succeededFuture(person));
-////    }
-////
-////    private void retrieveBooks(DataFetchingEnvironment env, Handler<AsyncResult<List<Book>>> completionHandler) {
-////        String bookName = env.getArgument("name");
-////
-////        List<Book> bookList;
-////        if (bookName != null) {
-////            bookList = books.values().stream()
-////                .filter(book -> book.name.equals(bookName))
-////                .collect(toList());
-////        } else {
-////            bookList = books.values().stream()
-////            .collect(toList());
-////        }
-////        completionHandler.handle(Future.succeededFuture(bookList));
-////    }
-//        if (bookName != null) {
-//            return books.values().stream()
-//                .filter(book -> book.name.equals(bookName))
-//                .collect(toList());
-//        }
-//        return books.values().stream()
-//            .collect(toList());
-//    }
-//
-//    private void retrievePerson(DataFetchingEnvironment env, Handler<AsyncResult<Person>> completionHandler) {
-//        Book book = env.getSource();
-//        Person person = book.author;
-//        if (book.author.name.equals("B")) {
-//            person = new Person("gavin");
-//        }
-//        completionHandler.handle(Future.succeededFuture(person));
-//    }
-//
-//    private void retrieveBooks(DataFetchingEnvironment env, Handler<AsyncResult<List<Book>>> completionHandler) {
-//        String bookName = env.getArgument("name");
-//
-//        List<Book> bookList;
-//        if (bookName != null) {
-//            bookList = books.values().stream()
-//                .filter(book -> book.name.equals(bookName))
-//                .collect(toList());
-//        } else {
-//            bookList = books.values().stream()
-//            .collect(toList());
-//        }
-//        completionHandler.handle(Future.succeededFuture(bookList));
-//    }
 }
