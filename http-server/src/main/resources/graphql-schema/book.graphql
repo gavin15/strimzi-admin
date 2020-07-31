@@ -1,0 +1,31 @@
+type Query {
+   books: [Book]
+}
+
+type Subscription {
+   bookAdded: Book
+   bookRemoved: Book
+}
+
+type Mutation {
+   addBook(title: String, author: String) : Book
+   deleteBook(createdAt: String) : Book
+}
+
+type BookFeed {
+   pageInfo: PageInfo!
+   books: [Book]
+}
+
+type PageInfo {
+   startCursor: String!
+   endCursor: String!
+   hasPrevPage: Boolean!
+   hasNextPage: Boolean!
+}
+
+type Book {
+   title: String,
+   author: String,
+   createdAt: String
+}
