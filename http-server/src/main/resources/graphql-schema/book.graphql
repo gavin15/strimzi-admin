@@ -1,5 +1,7 @@
 type Query {
    books: [Book]
+   bookFeed(before: String, after: String, limit: Int): BookFeed
+   getToken: String
 }
 
 type Subscription {

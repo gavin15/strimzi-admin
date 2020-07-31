@@ -20,7 +20,6 @@ import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
-import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.Router;
 
 import java.io.InputStreamReader;
@@ -35,7 +34,6 @@ import java.util.Objects;
 import java.util.ServiceLoader;
 
 import io.vertx.ext.web.handler.graphql.ApolloWSHandler;
-import io.vertx.ext.web.handler.graphql.ApolloWSMessageType;
 import io.vertx.ext.web.handler.graphql.VertxDataFetcher;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -76,7 +74,6 @@ public class AdminServer extends AbstractVerticle {
 
                 final Router router = Router.router(vertx);
                 router.mountSubRouter("/", routes);   // Mount the sub router containing the module routes
-                String token = "test";
                 Map<String, String> map = new HashMap<>();
                 vertx.executeBlocking(promise -> {
                         final SchemaParser schemaParser = new SchemaParser();
@@ -84,7 +81,7 @@ public class AdminServer extends AbstractVerticle {
                             Objects.requireNonNull(
                                 getClass()
                                     .getClassLoader()
-                                    .getResourceAsStream("graphql-schema/test.graphql")),
+                                    .getResourceAsStream("graphql-schema/book.graphql")),
                             StandardCharsets.UTF_8);
 
                         final TypeDefinitionRegistry typeDefinitionRegistry = schemaParser.parse(userInputStream);
@@ -94,37 +91,19 @@ public class AdminServer extends AbstractVerticle {
                     }, ar -> {
                         final TypeDefinitionRegistry baseSchema = (TypeDefinitionRegistry) ar.result();
                         final GraphQL graphQL = setupGraphQL(baseSchema);
-//                        router.route("/graphql").handler(routingContext -> {
-//                            if (routingContext.request().getHeader("Sec-WebSocket-Protocol") != null) {
-//                                routingContext.next();
-//                            } else {
-//                                routingContext.response().setStatusCode(511).end();
-//                            }
-//                        });
-                        router.route("/graphql").handler(ApolloWSHandler.create(graphQL).connectionHandler(webSocket -> {
-                            map.put(webSocket.textHandlerID(), token);
-                        }).messageHandler(message -> {
-                            System.out.println("message " + message.content());
-                            if(message.serverWebSocket().headers().get("Sec-WebSocket-Protocol") != null){
-                                JsonObject json = message.content();
-                                System.out.println("json " + json.getString("type"));
-                                if(json.getString("type").equals("connection_init")) {
-                                    System.out.println("json " + json.getString("type"));
-                                    JsonObject payload = json.getJsonObject("payload");
-                                    JsonObject header = payload.getJsonObject("headers");
-                                    String authToken = header.getString("authToken");
-                                    map.put(message.serverWebSocket().textHandlerID(), authToken);
-                                }
+                        router.route("/graphql").handler(routingContext -> {
+                            if (routingContext.request().getHeader("Authorization") != null) {
+                                map.put("token", routingContext.request().getHeader("Authorization"));
+                                routingContext.next();
                             } else {
-                                JsonObject error = new JsonObject();
-                                error.put("id", "");
-                                error.put("type", ApolloWSMessageType.ERROR);
-                                error.put("payload", "");
-                                message.serverWebSocket().writeTextMessage(error.toString());
-//                                message.serverWebSocket().close();
+                                routingContext.response().setStatusCode(511).end();
+                            }
+                        });
+                        router.route("/graphql").handler(ApolloWSHandler.create(graphQL).connectionHandler(webSocket -> {
+                            if (webSocket.headers().get("Authorization") != null) {
+                                map.put(webSocket.textHandlerID(), map.get("token"));
                             }
                         }).queryContext(context -> map.get(context.serverWebSocket().textHandlerID())));
-//                        router.route("/graphql").handler(GraphQLHandler.create(graphQL));
                     }
                 );
                 server.requestHandler(router).listen(8080);
@@ -159,6 +138,10 @@ public class AdminServer extends AbstractVerticle {
             books(environment, future);
         });
 
+        VertxDataFetcher<String> tokenDataFetcher = new VertxDataFetcher<>((environment, future) -> {
+            getToken(environment, future);
+        });
+
         VertxDataFetcher<BookFeed> bookFeedDataFetcher = new VertxDataFetcher<>((environment, future) -> {
             bookFeed(environment, future);
         });
@@ -172,8 +155,6 @@ public class AdminServer extends AbstractVerticle {
         });
 
         DataFetcher<Publisher<Book>> bookAddedPublisherDataFetcher = environment -> {
-            System.out.println("books " + books.size());
-            System.out.println("context " + environment.getContext());
             return bookAdded.toFlowable(BackpressureStrategy.BUFFER);
         };
 
@@ -183,7 +164,8 @@ public class AdminServer extends AbstractVerticle {
 
         RuntimeWiring runtimeWiring = newRuntimeWiring()
             .type("Query", builder -> builder.dataFetcher("books", booksDataFetcher)
-                .dataFetcher("bookFeed", bookFeedDataFetcher))
+                .dataFetcher("bookFeed", bookFeedDataFetcher)
+                .dataFetcher("getToken", tokenDataFetcher))
             .type("Mutation", builder -> builder.dataFetcher("addBook", addBookDataFetcher)
                 .dataFetcher("deleteBook", deleteBookDataFetcher))
             .type("Subscription", builder -> builder.dataFetcher("bookAdded", bookAddedPublisherDataFetcher))
@@ -222,6 +204,10 @@ public class AdminServer extends AbstractVerticle {
 
     private void books(DataFetchingEnvironment env, Handler<AsyncResult<List<Book>>> completionHandler) {
         completionHandler.handle(Future.succeededFuture(books));
+    }
+
+    private void getToken(DataFetchingEnvironment env, Handler<AsyncResult<String>> completionHandler) {
+        completionHandler.handle(Future.succeededFuture(env.getContext()));
     }
 
 
