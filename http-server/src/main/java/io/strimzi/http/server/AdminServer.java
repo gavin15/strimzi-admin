@@ -93,9 +93,11 @@ public class AdminServer extends AbstractVerticle {
                         final GraphQL graphQL = setupGraphQL(baseSchema);
                         router.route("/graphql").handler(routingContext -> {
                             if (routingContext.request().getHeader("Authorization") != null) {
+                                LOGGER.info("Authorization header present");
                                 map.put("token", routingContext.request().getHeader("Authorization"));
                                 routingContext.next();
                             } else {
+                                LOGGER.info("Authorization header is not present");
                                 routingContext.response().setStatusCode(511).end();
                             }
                         });
@@ -154,13 +156,9 @@ public class AdminServer extends AbstractVerticle {
             deleteBook(environment, future);
         });
 
-        DataFetcher<Publisher<Book>> bookAddedPublisherDataFetcher = environment -> {
-            return bookAdded.toFlowable(BackpressureStrategy.BUFFER);
-        };
+        DataFetcher<Publisher<Book>> bookAddedPublisherDataFetcher = environment -> bookAdded.toFlowable(BackpressureStrategy.BUFFER);
 
-        DataFetcher<Publisher<Book>> bookRemovedPublisherDataFetcher = environment -> {
-            return bookRemoved.toFlowable(BackpressureStrategy.BUFFER);
-        };
+        DataFetcher<Publisher<Book>> bookRemovedPublisherDataFetcher = environment -> bookRemoved.toFlowable(BackpressureStrategy.BUFFER);
 
         RuntimeWiring runtimeWiring = newRuntimeWiring()
             .type("Query", builder -> builder.dataFetcher("books", booksDataFetcher)
@@ -203,6 +201,7 @@ public class AdminServer extends AbstractVerticle {
     }
 
     private void books(DataFetchingEnvironment env, Handler<AsyncResult<List<Book>>> completionHandler) {
+        LOGGER.info("token " + env.getContext());
         completionHandler.handle(Future.succeededFuture(books));
     }
 
