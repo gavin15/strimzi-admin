@@ -34,6 +34,7 @@ import java.util.Objects;
 import java.util.ServiceLoader;
 
 import io.vertx.ext.web.handler.graphql.ApolloWSHandler;
+import io.vertx.ext.web.handler.graphql.GraphQLHandler;
 import io.vertx.ext.web.handler.graphql.VertxDataFetcher;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -47,16 +48,16 @@ public class AdminServer extends AbstractVerticle {
     private static final Logger LOGGER = LogManager.getLogger(AdminServer.class);
 
     List<Book> newList = Arrays.asList(
-        new Book("Harry Potter and the Sorcerer's stone", "J.K. Rowling", "123456"),
-        new Book("Jurassic Park", "Michael Crichton", "123457"),
-        new Book("Book 3", "Michael Crichton", "123458"),
-        new Book("Book 4", "Michael Crichton", "123459"),
-        new Book("Book 5", "Michael Crichton", "123460"),
-        new Book("Book 6", "Michael Crichton", "123461"),
-        new Book("Book 7", "Michael Crichton", "123462")
+        new Book("Harry Potter and the Sorcerer's stone", "J.K. Rowling", "123456", "no-user"),
+        new Book("Jurassic Park", "Michael Crichton", "123457", "no-user"),
+        new Book("Book 3", "Michael Crichton", "123458", "no-user"),
+        new Book("Book 4", "Michael Crichton", "123459", "no-user"),
+        new Book("Book 5", "Michael Crichton", "123460", "no-user"),
+        new Book("Book 6", "Michael Crichton", "123461", "no-user"),
+        new Book("Book 7", "Michael Crichton", "123462", "no-user")
     );
 
-    PublishSubject<Book> bookAdded = PublishSubject.create();
+    PublishSubject<BookNotification> bookAdded = PublishSubject.create();
     PublishSubject<Book> bookRemoved = PublishSubject.create();
 
     List<Book> books = new ArrayList<>(newList);
@@ -93,7 +94,7 @@ public class AdminServer extends AbstractVerticle {
                         final GraphQL graphQL = setupGraphQL(baseSchema);
                         router.route("/graphql").handler(routingContext -> {
                             if (routingContext.request().getHeader("Authorization") != null) {
-                                LOGGER.info("Authorization header present");
+                                LOGGER.info("Authorization header present: {}", routingContext.request().getHeader("Authorization"));
                                 map.put("token", routingContext.request().getHeader("Authorization"));
                                 routingContext.next();
                             } else {
@@ -105,7 +106,8 @@ public class AdminServer extends AbstractVerticle {
                             if (webSocket.headers().get("Authorization") != null) {
                                 map.put(webSocket.textHandlerID(), map.get("token"));
                             }
-                        }).queryContext(context -> map.get(context.serverWebSocket().textHandlerID())));
+                         }).queryContext(context -> map.get(context.serverWebSocket().textHandlerID())));
+                        router.route("/graphql").handler(GraphQLHandler.create(graphQL).queryContext(context -> context.request().getHeader("Authorization")));
                     }
                 );
                 server.requestHandler(router).listen(8080);
@@ -156,7 +158,10 @@ public class AdminServer extends AbstractVerticle {
             deleteBook(environment, future);
         });
 
-        DataFetcher<Publisher<Book>> bookAddedPublisherDataFetcher = environment -> bookAdded.toFlowable(BackpressureStrategy.BUFFER);
+        DataFetcher<Publisher<BookNotification>> bookAddedPublisherDataFetcher = environment -> bookAdded.toFlowable(BackpressureStrategy.BUFFER).map(book -> {
+            String subscribedBy = environment.getContext();
+            return new BookNotification(book.title, book.author, book.createdAt, book.createdBy, subscribedBy);
+        });
 
         DataFetcher<Publisher<Book>> bookRemovedPublisherDataFetcher = environment -> bookRemoved.toFlowable(BackpressureStrategy.BUFFER);
 
@@ -184,9 +189,10 @@ public class AdminServer extends AbstractVerticle {
     private void addBook(DataFetchingEnvironment env, Handler<AsyncResult<Book>> completionHandler) {
         String title = env.getArgument("title");
         String author = env.getArgument("author");
-        Book book = new Book(title, author, "467234");
+        String createdBy = env.getContext();
+        Book book = new Book(title, author, "467234", createdBy);
         books.add(book);
-        bookAdded.onNext(book);
+        bookAdded.onNext(new BookNotification(book.title, book.author, book.createdAt, book.createdBy, ""));
 
         completionHandler.handle(Future.succeededFuture(book));
     }

@@ -1,33 +1,41 @@
 type Query {
-   books: [Book]
-   bookFeed(before: String, after: String, limit: Int): BookFeed
-   getToken: String
+  books: [Book]
+  bookFeed(before: String, after: String, limit: Int): BookFeed
 }
 
 type Subscription {
-   bookAdded: Book
-   bookRemoved: Book
+  bookAdded: BookNotification
+  bookRemoved: Book
 }
 
 type Mutation {
-   addBook(title: String, author: String) : Book
-   deleteBook(createdAt: String) : Book
+  addBook(title: String, author: String): Book
+  deleteBook(createdAt: String): Book
 }
 
 type BookFeed {
-   pageInfo: PageInfo!
-   books: [Book]
+  pageInfo: PageInfo!
+  books: [Book]
 }
 
 type PageInfo {
-   startCursor: String!
-   endCursor: String!
-   hasPrevPage: Boolean!
-   hasNextPage: Boolean!
+  startCursor: String!
+  endCursor: String!
+  hasPrevPage: Boolean!
+  hasNextPage: Boolean!
 }
 
 type Book {
-   title: String,
-   author: String,
-   createdAt: String
+  title: String
+  author: String
+  createdAt: String
+  createdBy: String
+}
+
+type BookNotification {
+                        title: String
+                        author: String
+                        createdAt: String
+                        createdBy: String
+   subscribedBy: String
 }
